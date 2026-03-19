@@ -1,0 +1,176 @@
+{
+    "ai_level": 0,
+    "user_history": [
+        {
+            "moves": 42,
+            "result": "0-1",
+            "human_style": "aggressive",
+            "anti_boring": false,
+            "mistakes": [],
+            "feedback": [
+                "Games are ending faster.",
+                "Repetition reduced."
+            ]
+        },
+        {
+            "moves": 64,
+            "result": "0-1",
+            "human_style": "aggressive",
+            "anti_boring": false,
+            "mistakes": [
+                "long_game_drag"
+            ],
+            "feedback": [
+                "Repetition reduced."
+            ]
+        },
+        {
+            "moves": 42,
+            "result": "0-1",
+            "human_style": "aggressive",
+            "anti_boring": false,
+            "mistakes": [],
+            "feedback": [
+                "Games are ending faster.",
+                "Repetition reduced."
+            ]
+        },
+        {
+            "moves": 70,
+            "result": "0-1",
+            "human_style": "aggressive",
+            "anti_boring": false,
+            "mistakes": [
+                "long_game_drag"
+            ],
+            "feedback": [
+                "Repetition reduced."
+            ]
+        },
+        {
+            "moves": 28,
+            "result": "0-1",
+            "human_style": "aggressive",
+            "anti_boring": false,
+            "mistakes": [],
+            "feedback": [
+                "Games are ending faster.",
+                "Repetition reduced."
+            ]
+        },
+        {
+            "moves": 80,
+            "result": "*",
+            "human_style": "aggressive",
+            "anti_boring": false,
+            "mistakes": [
+                "long_game_drag"
+            ],
+            "feedback": [
+                "Repetition reduced."
+            ]
+        },
+        {
+            "result": "0-1"
+        },
+        {
+            "result": "0-1"
+        },
+        {
+            "result": "0-1"
+        },
+        {
+            "result": "0-1"
+        },
+        {
+            "result": "0-1"
+        },
+        {
+            "result": "0-1"
+        },
+        {
+            "result": "0-1"
+        },
+        {
+            "result": "0-1"
+        },
+        {
+            "result": "0-1"
+        },
+        {
+            "result": "0-1"
+        },
+        {
+            "result": "0-1"
+        },
+        {
+            "result": "0-1"
+        },
+        {
+            "result": "0-1"
+        },
+        {
+            "result": "0-1"
+        },
+        {
+            "result": "0-1"
+        },
+        {
+            "result": "0-1"
+        },
+        {
+            "result": "0-1"
+        },
+        {
+            "result": "0-1"
+        },
+        {
+            "result": "0-1"
+        },
+        {
+            "result": "0-1"
+        },
+        {
+            "result": "0-1"
+        },
+        {
+            "result": "0-1"
+        },
+        {
+            "result": "0-1"
+        },
+        {
+            "result": "0-1"
+        },
+        {
+            "result": "0-1"
+        },
+        {
+            "result": "0-1"
+        },
+        {
+            "result": "1-0",
+            "captures": 41,
+            "pawn_moves": 10,
+            "checks": 8
+        },
+        {
+            "result": "1-0",
+            "captures": 36,
+            "pawn_moves": 9,
+            "checks": 8
+        },
+        {
+            "result": "0-1",
+            "captures": 71,
+            "pawn_moves": 16,
+            "checks": 2
+        },
+        {
+            "result": "1-0",
+            "captures": 42,
+            "pawn_moves": 13,
+            "checks": 9
+        }
+    ]
+}
