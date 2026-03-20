@@ -1,4 +1,3 @@
-
 import json
 
 DATA_FILE = "move_data.json"
@@ -14,27 +13,34 @@ def compute_style_dna():
     if len(data) == 0:
         return None
 
-    total_moves = len(data)
-    captures = 0
-    checks = 0
-    pawn_moves = 0
+    total = len(data)
 
-    for m in data:
+    captures = sum(1 for m in data if m["capture"])
+    checks = sum(1 for m in data if m["check"])
+    pawn_moves = sum(1 for m in data if m["piece"] == "p")
 
-        if m["capture"]:
-            captures += 1
+    # 🔥 NEW FEATURES
+    early_moves = data[:10]
 
-        if m["check"]:
-            checks += 1
+    early_captures = sum(1 for m in early_moves if m["capture"])
+    early_checks = sum(1 for m in early_moves if m["check"])
 
-        if m["piece"] == "p":
-            pawn_moves += 1
+    # risk = early aggression
+    risk = (early_captures + early_checks) / max(len(early_moves), 1)
+
+    # tempo = fast aggressive play
+    tempo = checks / total
 
     style = {
-        "aggression": round((captures + checks) / total_moves, 2),
-        "capture_frequency": round(captures / total_moves, 2),
-        "pawn_usage": round(pawn_moves / total_moves, 2),
-        "check_frequency": round(checks / total_moves, 2)
+        "aggression": round((captures + checks) / total, 2),
+        "capture_frequency": round(captures / total, 2),
+        "check_frequency": round(checks / total, 2),
+        "pawn_usage": round(pawn_moves / total, 2),
+
+        # 🔥 NEW DNA
+        "risk": round(risk, 2),
+        "tempo": round(tempo, 2)
     }
 
     return style
+
