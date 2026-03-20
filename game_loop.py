@@ -1,12 +1,10 @@
-
 import chess
 import random
 import json
 import torch
 from stockfish import Stockfish
-from neural_bias import NeuralBias
+from neural_bias import NeuralBias, board_features
 from pygame_board import play_human_turn
-from mirror_analyzer import analyze_player_style
 from move_tracker import track_move
 from style_dna import compute_style_dna
 from opening_dna import track_opening, choose_opening
@@ -18,7 +16,150 @@ MODEL_PATH = "bias_model.pt"
 MIN_ELO = 1320
 
 
-# ---------------- PERSISTENCE ----------------
+# ---------------- PATTERN MEMORY ----------------
+def load_patterns():
+    try:
+        with open("patterns.json", "r") as f:
+            return json.load(f)
+    except:
+        return {}
+
+
+def save_patterns(data):
+    with open("patterns.json", "w") as f:
+        json.dump(data, f, indent=4)
+
+
+# ---------------- PERSONALITY ----------------
+def load_personality():
+    try:
+        with open("personality.json", "r") as f:
+            return json.load(f)
+    except:
+        return None
+
+
+def save_personality(style_dna):
+    with open("personality.json", "w") as f:
+        json.dump(style_dna, f, indent=4)
+
+
+# ---------------- LEARNING ----------------
+def load_learning():
+    try:
+        with open("learning.json", "r") as f:
+            return json.load(f)
+    except:
+        return {"wins": 0, "losses": 0}
+
+
+def save_learning(data):
+    with open("learning.json", "w") as f:
+        json.dump(data, f, indent=4)
+
+
+# ---------------- HABIT MEMORY ----------------
+def load_habits():
+    try:
+        with open("habits.json", "r") as f:
+            return json.load(f)
+    except:
+        return {"piece_usage": {}}
+
+
+def save_habits(data):
+    with open("habits.json", "w") as f:
+        json.dump(data, f, indent=4)
+
+
+# ---------------- NEURAL SCORE ----------------
+def neural_score(ai, board, move, style_dna):
+    try:
+        board.push(move)
+
+        style_type = "aggressive" if style_dna and style_dna.get("aggression", 0) > 0.2 else "normal"
+        features = board_features(board, style_type)
+
+        with torch.no_grad():
+            score = ai.bias_net(features).item()
+
+        board.pop()
+        return score
+
+    except:
+        try:
+            board.pop()
+        except:
+            pass
+        return 0
+
+
+# ---------------- GAME MODE ----------------
+def detect_game_mode(board):
+    king_square = board.king(board.turn)
+    attackers = board.attackers(not board.turn, king_square)
+
+    if len(attackers) >= 2:
+        return "defense"
+
+    if board.is_check():
+        return "attack"
+
+    return "normal"
+
+
+# ---------------- EMOTION ----------------
+def apply_emotion(score, move, board, emotion):
+
+    if emotion == "revenge":
+        if board.is_capture(move):
+            score += 6
+
+    if emotion == "tilt":
+        score -= random.randint(0, 5)
+
+    if emotion == "confident":
+        if board.gives_check(move):
+            score += 4
+
+    return score
+
+
+# ---------------- STYLE ----------------
+def score_move(board, move, style_dna, mode):
+    score = 0
+
+    if not style_dna:
+        return score
+
+    piece = board.piece_at(move.from_square)
+
+    if board.is_capture(move):
+        score += style_dna.get("capture_frequency", 0) * 10
+        if mode == "attack":
+            score += 5
+
+    if board.gives_check(move):
+        score += style_dna.get("check_frequency", 0) * 8
+        if mode == "attack":
+            score += 5
+
+    if piece and piece.piece_type == chess.PAWN:
+        score += style_dna.get("pawn_usage", 0) * 5
+
+    if mode == "defense":
+        if board.is_capture(move):
+            score -= 3
+
+    score += style_dna.get("risk", 0) * 6
+
+    if board.gives_check(move):
+        score += style_dna.get("tempo", 0) * 5
+
+    return score
+
+
+# ---------------- SAVE/LOAD ----------------
 def save_progress(level, history):
     with open("progress.json", "w") as f:
         json.dump({"ai_level": level, "user_history": history}, f, indent=4)
@@ -28,7 +169,7 @@ def load_progress():
     try:
         with open("progress.json", "r") as f:
             return json.load(f)
-    except FileNotFoundError:
+    except:
         return {"ai_level": 1, "user_history": []}
 
 
@@ -43,21 +184,24 @@ class MirrorAI:
 
         try:
             self.bias_net.load_state_dict(torch.load(MODEL_PATH))
-            print("[SYSTEM] Neural bias model loaded.")
         except:
-            print("[SYSTEM] Fresh neural bias model.")
+            pass
 
         data = load_progress()
         self.level = data["ai_level"]
         self.history = data["user_history"]
 
-        self.recent_results = []
+        self.emotion = "neutral"
+        self.personality = load_personality()
+        self.learning = load_learning()
+        self.habits = load_habits()
+        self.patterns = load_patterns()
+
+        self.move_memory = []
 
         self.update_engine_strength()
 
-    # ---------------- ENGINE STRENGTH ----------------
     def update_engine_strength(self):
-
         skill = max(0, min(20, self.level * 3))
         elo = 1320 + (self.level * 50)
 
@@ -67,168 +211,153 @@ class MirrorAI:
         self.sf.set_skill_level(skill)
         self.sf.set_elo_rating(elo)
 
-        print(f"[SYSTEM] AI Level: {self.level} | Elo: {elo} | Skill: {skill}")
+    def update_emotion(self, board, last_move):
 
-    # ---------------- AI MOVE SELECTION ----------------
+        if board.is_capture(last_move):
+            self.emotion = "revenge"
+
+        blunder_rate = get_blunder_rate()
+
+        if blunder_rate > 0.3:
+            self.emotion = "tilt"
+        elif blunder_rate < 0.1:
+            self.emotion = "confident"
+
     def select_skill_move(self, board, style_dna):
+
+        # 🔥 CLONE LOGIC
+        fen = board.board_fen()
+        if fen in self.patterns:
+            moves = self.patterns[fen]
+            best = max(moves, key=moves.get)
+            if best in [m.uci() for m in board.legal_moves]:
+                return best
 
         self.sf.set_fen_position(board.fen())
 
-        # -------- OPENING DNA --------
-        if board.fullmove_number == 1:
+        if board.fullmove_number <= 3:
             opening = choose_opening()
             if opening:
                 moves = opening.split()
-                if len(moves) >= 2:
-                    return moves[1]
+                idx = board.fullmove_number - 1
+                if idx < len(moves):
+                    return moves[idx]
 
-        best_move = self.sf.get_best_move()
-
-        if not best_move:
+        legal_moves = list(board.legal_moves)
+        if not legal_moves:
             return None
 
-        # -------- BLUNDER DNA --------
-        blunder_rate = get_blunder_rate()
-        mistake_chance = max(0.05, min(0.4, blunder_rate))
+        mode = detect_game_mode(board)
+        style = dict(style_dna) if style_dna else {}
 
-        # -------- STYLE DNA --------
-        if style_dna:
+        most_used_piece = None
+        if self.habits["piece_usage"]:
+            most_used_piece = max(self.habits["piece_usage"], key=self.habits["piece_usage"].get)
 
-            aggression = style_dna.get("aggression", 0)
+        scored_moves = []
 
-            if aggression > 0.30:
-                mistake_chance *= 0.8
+        for move in legal_moves:
+            score = score_move(board, move, style, mode)
+            score += neural_score(self, board, move, style) * 15
+            score = apply_emotion(score, move, board, self.emotion)
 
-                capture_moves = []
+            if most_used_piece:
+                piece = board.piece_at(move.from_square)
+                if piece and piece.symbol().lower() == most_used_piece:
+                    score += 3
 
-                for move in board.legal_moves:
-                    if board.is_capture(move):
-                        capture_moves.append(move)
+            scored_moves.append((move, score))
 
-                if capture_moves and random.random() < 0.5:
-                    return random.choice(capture_moves).uci()
+        scored_moves.sort(key=lambda x: x[1], reverse=True)
 
-            if aggression < 0.10:
-                mistake_chance *= 1.2
+        best_move = scored_moves[0][0]
 
-        # -------- APPLY MISTAKE --------
-        if random.random() < mistake_chance:
+        self.move_memory.append({
+            "board": board.fen(),
+            "move": best_move.uci()
+        })
 
-            legal_moves = list(board.legal_moves)
+        return best_move.uci()
 
-            if len(legal_moves) > 1:
-                return random.choice(legal_moves).uci()
-
-        return best_move
-
-    # ---------------- MAIN GAME LOOP ----------------
     def play(self):
 
         while True:
 
             board = chess.Board()
-
-            pawn_moves = 0
-            captures = 0
-            checks = 0
-
-            # -------- STYLE DNA --------
-            style_dna = compute_style_dna()
-            if style_dna:
-                print("[STYLE DNA]", style_dna)
-
-            # -------- MIRROR STYLE --------
-            mirror_style = analyze_player_style()
-            if mirror_style:
-                print("[MIRROR STYLE]", mirror_style)
-
-            print("\n--- NEW SESSION (GUI MODE) ---")
+            live_style = compute_style_dna()
+            style_dna = self.personality if self.personality else live_style
 
             while not board.is_game_over():
 
-                # -------- HUMAN MOVE --------
                 play_human_turn(board)
-
                 last_move = board.peek()
 
-                # -------- TRACK EVERYTHING --------
                 track_opening(board)
                 track_move(board, last_move)
                 track_blunder(board, last_move)
 
+                # 🔥 PATTERN STORE
+                fen = board.board_fen()
+                if fen not in self.patterns:
+                    self.patterns[fen] = {}
+
+                move_str = last_move.uci()
+                if move_str not in self.patterns[fen]:
+                    self.patterns[fen][move_str] = 0
+
+                self.patterns[fen][move_str] += 1
+                save_patterns(self.patterns)
+
+                # HABITS
                 piece = board.piece_at(last_move.to_square)
+                if piece:
+                    p = piece.symbol().lower()
+                    self.habits["piece_usage"][p] = self.habits["piece_usage"].get(p, 0) + 1
+                save_habits(self.habits)
 
-                if piece and piece.piece_type == chess.PAWN:
-                    pawn_moves += 1
-
-                if board.is_capture(last_move):
-                    captures += 1
-
-                if board.is_check():
-                    checks += 1
+                self.update_emotion(board, last_move)
 
                 if board.is_game_over():
                     break
 
-                # -------- AI MOVE --------
                 ai_move = self.select_skill_move(board, style_dna)
-
                 if not ai_move:
-                    print("AI returned no move.")
                     break
 
                 board.push_uci(ai_move)
 
-            # ---------------- GAME END ----------------
             result = board.result()
             print("Result:", result)
 
-            print("Checkmate:", board.is_checkmate())
-            print("Stalemate:", board.is_stalemate())
-            print("Insufficient material:", board.is_insufficient_material())
-            print("50-move rule:", board.can_claim_fifty_moves())
-            print("Repetition:", board.is_repetition())
-            print("---------------")
+            reward = 1 if result == "0-1" else -1
 
-            # ---------------- AUTO DIFFICULTY ----------------
-            if result == "1-0":
-                self.recent_results.append(1)
-            elif result == "0-1":
-                self.recent_results.append(0)
+            for mem in self.move_memory:
+                try:
+                    temp_board = chess.Board(mem["board"])
+                    move = chess.Move.from_uci(mem["move"])
+                    temp_board.push(move)
 
-            if len(self.recent_results) > 4:
-                self.recent_results.pop(0)
+                    features = board_features(temp_board, "aggressive")
+                    pred = self.bias_net(features)
 
-            if len(self.recent_results) >= 4:
+                    target = torch.tensor([reward], dtype=torch.float32)
+                    loss = (pred - target).pow(2).mean()
 
-                win_rate = sum(self.recent_results) / len(self.recent_results)
+                    self.bias_opt.zero_grad()
+                    loss.backward()
+                    self.bias_opt.step()
 
-                if win_rate >= 0.75:
-                    self.level += 1
-                    print("[SYSTEM] Player dominating → increasing difficulty")
-                    self.update_engine_strength()
+                except:
+                    continue
 
-                elif win_rate <= 0.25:
-                    self.level = max(0, self.level - 1)
-                    print("[SYSTEM] Player struggling → reducing difficulty")
-                    self.update_engine_strength()
+            self.move_memory = []
 
-            # ---------------- SAVE ----------------
-            self.history.append({
-                "result": result,
-                "captures": captures,
-                "pawn_moves": pawn_moves,
-                "checks": checks
-            })
+            torch.save(self.bias_net.state_dict(), MODEL_PATH)
 
-            save_progress(self.level, self.history)
-
-            again = input("Play again? (y/n): ")
-            if again.lower() != "y":
+            if input("Play again? (y/n): ").lower() != "y":
                 break
 
 
-# ---------------- RUN ----------------
 if __name__ == "__main__":
     MirrorAI(SF_PATH).play()
 
